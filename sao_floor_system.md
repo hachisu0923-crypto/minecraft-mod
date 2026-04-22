@@ -451,16 +451,173 @@ public abstract class SaoFloorBoss extends Monster implements GeoEntity {
 
 [Phase 2]
   ☐ Floor 4〜5 構造体（Structurize スキャン済み NBT を使用）・ボス
-  ☐ jigsaw モジュール生成
+  ☐ YUNG's API 導入 + jigsaw を Enhanced Jigsaw Manager に移行
+  ☐ Structure Gel API 導入 + 既存構造体 NBT に Gel ブロックを追加
+  ☐ jigsaw モジュール生成（分岐・優先度ルール設計）
   ☐ エネミー種ごとのカスタムAI
   ☐ フロアマップUI
   ☐ GeckoLib アニメーション拡充（Phase 2 ボス分）
 
 [Phase 3]
-  ☐ Floor 6〜10（Structurize で構造体を量産）
+  ☐ TerraBlender 導入 + Floor 6〜10 カスタムバイオーム登録
+  ☐ Floor 6〜10（Structurize で構造体を量産・バイオームテーマ反映）
   ☐ Floor 75 中間ボス
   ☐ Floor 100 最終ボス「ヒースクリフ」
 ```
+
+---
+
+## 10. 地形生成補助ライブラリ
+
+現在の設計は手作り NBT + jigsaw モジュールで成り立っているが、
+Floor 6〜100 に向けてスケールする際に以下の限界がある。
+
+- jigsaw はあくまで事前ビルドしたモジュールを繋ぐだけで、真の手続き生成ではない
+- フロアごとのカスタムバイオーム（水中・砂漠・森林）は標準 API だけでは煩雑
+- モジュール接続の多様性（分岐・ループ・高さ変化）が vanilla jigsaw では難しい
+
+以下の 3 ライブラリを導入することでこれらを解決する。
+
+### ライブラリ比較
+
+| ライブラリ | 主な用途 | Forge 1.20.1 対応 | 導入種別 |
+|-----------|---------|:-----------------:|---------|
+| **YUNG's API** | jigsaw 強化・構造体プール管理 | ✅ | `implementation`（必須依存） |
+| **TerraBlender** | フロアディメンションへのカスタムバイオーム注入 | ✅ | `implementation`（必須依存） |
+| **Structure Gel API** | 構造体境界定義・構造体内エア変換 | ✅ | `implementation`（任意強化） |
+
+---
+
+### YUNG's API — jigsaw 強化ライブラリ
+
+vanilla の jigsaw は単純なチェーンしか組めないが、YUNG's API の **Enhanced Jigsaw Manager** を
+使うと分岐・ループ・接続優先度などの高度なレイアウトが可能になる。
+
+**影響箇所:** Section 4「通常エリア → ボスエリアの接続」
+
+**build.gradle への追加:**
+
+```gradle
+repositories {
+    maven { url = 'https://repo1.maven.org/maven2/' }
+}
+dependencies {
+    implementation fg.deobf("com.yungnickyoung.minecraft.yungsapi:YungsApi-1.20-Forge:4.0.2")
+}
+```
+
+**jigsaw チェーンの改善例:**
+
+```text
+[vanilla jigsaw]
+  entrance → corridor → ... → gate_room  (直列のみ)
+
+[YUNG's API Enhanced Jigsaw]
+  entrance
+    ├── corridor_main  (必須経路)
+    │     ├── room_small (重み 3)
+    │     ├── room_large (重み 1)
+    │     └── corridor_branch (分岐あり)
+    └── shortcut_path  (優先度低・ランダム出現)
+          └── gate_room (終端ピース)
+```
+
+**コード変更箇所:** `SaoFloorBoss` の構造体プール登録で `YungsJigsawManager` に切り替える。
+
+```java
+// 既存: vanilla JigsawPlacement
+JigsawPlacement.addPieces(context, poolHolder, ...);
+
+// YUNG's API に切り替え
+YungsJigsawManager.addPieces(context, poolHolder, ...);
+```
+
+---
+
+### TerraBlender — フロアバイオーム注入 API
+
+各フロアディメンションに専用バイオームを付与することで、
+Floor 6〜10 の「水中・砂漠・森林」テーマを地形レベルで実現する。
+TerraBlender はバイオーム間の干渉を避けるための **uniqueness** パラメータを提供する。
+
+**影響箇所:** Section 3「Phase 2 以降（Floor 6〜）」
+
+**build.gradle への追加:**
+
+```gradle
+repositories {
+    maven { url = 'https://maven.blamejared.com' }
+}
+dependencies {
+    implementation fg.deobf("curse.maven:terrablender-563928:4509605")
+}
+```
+
+**フロアバイオーム設計:**
+
+| Floor | テーマ | TerraBlender バイオーム設定 |
+|-------|--------|---------------------------|
+| 6     | 水中迷宮 | `temperature=-0.5, humidity=1.0` の水中バイオーム |
+| 7     | 砂漠遺跡 | `temperature=2.0, humidity=-1.0` の砂漠バイオーム |
+| 8     | 深森林 | `temperature=0.5, humidity=0.8` の密林バイオーム |
+| 9     | 氷河洞窟 | `temperature=-2.0, humidity=0.0` の氷結バイオーム |
+| 10    | 火山地帯 | `temperature=2.0, humidity=-0.5` の溶岩バイオーム |
+
+**バイオーム登録例:**
+
+```java
+// SaoModBiomes.java
+public class SaoModBiomes {
+    public static void registerBiomes(BiomeProviders providers) {
+        providers.register(new SaoFloorBiomeProvider(
+            SaoMod.MOD_ID, 4  // uniqueness = 4 (他 Mod との干渉を避ける)
+        ));
+    }
+}
+```
+
+---
+
+### Structure Gel API — 構造体境界ヘルパー
+
+Gel ブロックを構造体に埋め込むことで、生成時に周囲の地形を自動整地したり
+構造体内部のエア化を自動処理できる。jigsaw モジュールの配置精度が上がる。
+
+**影響箇所:** Section 4「Structurize による構造体作成ワークフロー」
+
+**build.gradle への追加:**
+
+```gradle
+repositories {
+    maven { url = 'https://maven.moddinglegacy.com/artifactory/modding-legacy/' }
+}
+dependencies {
+    implementation fg.deobf("com.legacy:structure-gel:2.16.2:forge")
+}
+```
+
+**Gel ブロックの種類と用途:**
+
+| Gel ブロック | 用途 |
+|-------------|------|
+| `GelBlocks.BLUE_GEL` | 構造体の外壁・床に埋め込み → 生成時に周囲を整地 |
+| `GelBlocks.RED_GEL` | 構造体内部に埋め込み → 生成時に空気に置換（洞窟など） |
+| `GelBlocks.GREEN_GEL` | 液体（水・溶岩）除去マーカー |
+
+> **ワークフロー変更**: Structurize でスキャンした部屋の外周に Blue Gel を
+> 手動配置してから `.nbt` に変換することで、
+> jigsaw 生成時に隣接する地形との境界が自動整地される。
+
+---
+
+### 3 ライブラリ導入後の恩恵まとめ
+
+| 課題 | 導入前 | 導入後 |
+|------|-------|-------|
+| 通路の分岐・多様性 | 直列チェーンのみ | YUNG's API で分岐・優先度制御が可能 |
+| Floor 6〜10 のバイオーム | 手動タグ付けのみ | TerraBlender で地形レベルのバイオーム生成 |
+| 構造体と地形の境界 | 手作業でフラット地形を前提 | Structure Gel API で自動整地 |
+| 100 フロアへのスケール | 手作り NBT が必要 | 生成ルールの設定追加のみで対応可能 |
 
 ---
 
