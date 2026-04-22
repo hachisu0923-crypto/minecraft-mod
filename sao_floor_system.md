@@ -15,7 +15,7 @@
 
 ### エリア分離方針
 
-```
+```text
 同一ディメンション内のフロア構成イメージ
 
   ┌─────────────────────────────────────────┐
@@ -61,11 +61,27 @@ public class FloorData extends SavedData {
 
     @Override
     public CompoundTag save(CompoundTag tag) {
-        // シリアライズ
+        ListTag list = new ListTag();
+        clearedFloors.forEach((floor, cleared) -> {
+            CompoundTag entry = new CompoundTag();
+            entry.putInt("floor", floor);
+            entry.putBoolean("cleared", cleared);
+            list.add(entry);
+        });
+        tag.put("clearedFloors", list);
+        tag.putInt("highestFloor", highestFloor);
+        return tag;
     }
 
     public static FloorData load(CompoundTag tag) {
-        // デシリアライズ
+        FloorData data = new FloorData();
+        ListTag list = tag.getList("clearedFloors", Tag.TAG_COMPOUND);
+        for (int i = 0; i < list.size(); i++) {
+            CompoundTag entry = list.getCompound(i);
+            data.clearedFloors.put(entry.getInt("floor"), entry.getBoolean("cleared"));
+        }
+        data.highestFloor = tag.getInt("highestFloor");
+        return data;
     }
 }
 ```
@@ -111,6 +127,8 @@ FloorData data = level.getDataStorage()
 
 ### エリアの役割分担
 
+> 空間レイアウトは [Section 1 のエリア構成図](#エリア分離方針) も参照。
+
 | エリア種別 | 生成方式 | 内容 |
 |-----------|---------|------|
 | 通常エリア | jigsaw モジュール式 | 探索・雑魚戦・宝箱・ショップNPC |
@@ -118,7 +136,7 @@ FloorData data = level.getDataStorage()
 
 ### ファイル構成
 
-```
+```text
 resources/
 └── data/
     └── saomod/
@@ -143,7 +161,7 @@ resources/
 
 ### 通常エリア → ボスエリアの接続
 
-```
+```text
 jigsaw 生成チェーン:
   entrance.nbt
     → corridor_*.nbt (ランダム複数)
@@ -187,7 +205,7 @@ public class FloorGateBlock extends Block {
 
 ## 5. フロアクリアフロー
 
-```
+```text
 プレイヤーがボス部屋に入場
         ↓
 ボスエンティティがスポーン（BossBarEvent 登録）
@@ -211,9 +229,16 @@ public class FloorClearPacket {
     // クライアント側でクリア演出を再生
     public static void handle(FloorClearPacket pkt, Supplier<NetworkEvent.Context> ctx) {
         ctx.get().enqueueWork(() -> {
-            // 画面中央に「Floor X Clear!」テキスト表示
-            // SAO原作風のクリア演出
+            Minecraft mc = Minecraft.getInstance();
+            // 画面中央に「Floor X — Cleared!」を数秒間オーバーレイ表示
+            mc.gui.setTitle(
+                Component.literal("Floor " + pkt.floorId + " — Cleared!"),
+                Component.literal(pkt.bossName)
+            );
+            // クリア音を再生
+            mc.player.playSound(SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 1.0f);
         });
+        ctx.get().setPacketHandled(true);
     }
 }
 ```
@@ -306,7 +331,7 @@ public abstract class SaoFloorBoss extends Monster {
 - ボス部屋では `ServerBossEvent` によるボスHPバーを上部に表示
 - フロアクリア時: 画面中央に「Floor X — Cleared!」をアニメーション表示
 
-### フロアマップ（Phase 2 実装予定）
+### フロアマップ（Phase 2 実装予定 → [Section 9](#9-開発優先順位) 参照）
 
 - `Patchouli` 連携でフロア攻略メモ帳
 - クリアフロアは金色でマーク
@@ -315,7 +340,7 @@ public abstract class SaoFloorBoss extends Monster {
 
 ## 9. 開発優先順位
 
-```
+```text
 [Phase 1]
   ✅ FloorData (SavedData) 実装
   ✅ Floor 1〜3 構造体NBT作成
@@ -338,4 +363,7 @@ public abstract class SaoFloorBoss extends Monster {
 
 ---
 
-> **関連ドキュメント**: スキルシステム設計 / ステータス設計 / HUD設計
+> **関連ドキュメント**:
+> - スキルシステム設計（未作成）
+> - ステータス設計（未作成）
+> - HUD設計（未作成）
