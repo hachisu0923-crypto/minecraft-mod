@@ -159,6 +159,38 @@ resources/
                 └── shop_room.nbt
 ```
 
+### Structurize による構造体作成ワークフロー
+
+手動で NBT を編集するより、Structurize のインゲームスキャンツールを使うと
+部屋の作成・修正サイクルが大幅に短縮できる。
+
+**build.gradle への追加（開発時ランタイムのみ）:**
+
+```gradle
+repositories {
+    maven { url = 'https://www.cursemaven.com' }
+}
+dependencies {
+    // CurseForge のファイルページから File ID を取得して差し替えること
+    runtimeOnly fg.deobf("curse.maven:structurize-298744:<FILE_ID>")
+}
+```
+
+**作業手順:**
+
+```text
+1. ./gradlew runClient で開発クライアントを起動
+2. クリエイティブモードで部屋を建築
+   （スポーナー・宝箱・jigsaw ブロックを配置する）
+3. Structurize のスキャンツールで範囲を選択 → .blueprint として保存
+4. Structurize の変換機能で .blueprint → .nbt に変換
+5. 出力した .nbt を resources/data/saomod/structures/floor_N/ に配置
+```
+
+> **注意**: Structurize のネイティブ保存形式は `.blueprint` だが、  
+> Minecraft の jigsaw システムが要求するのは `.nbt` 形式。  
+> スキャン後は必ず変換ステップを挟むこと。
+
 ### 通常エリア → ボスエリアの接続
 
 ```text
@@ -267,12 +299,55 @@ public class FloorClearPacket {
 
 ## 7. ボスエンティティ設計
 
+### 依存ライブラリ：GeckoLib
+
+バニラ Forge のエンティティアニメーションはフレームベースで表現力が低い。
+GeckoLib を使うと Blockbench で作成した 3D アニメーションを JSON で管理でき、
+フェーズ移行時の攻撃モーション切り替えがシンプルに実装できる。
+
+**build.gradle への追加:**
+
+```gradle
+repositories {
+    maven { url = 'https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/' }
+}
+dependencies {
+    implementation fg.deobf("software.bernie.geckolib:geckolib-forge-1.20.1:4.4.4")
+}
+```
+
+**GeckoLib アセットファイル構成:**
+
+```text
+assets/saomod/
+├── geo/entity/
+│   └── boss_floor1.json           ← Blockbench で出力する 3D モデル
+├── animations/entity/
+│   └── boss_floor1.animation.json ← アニメーション定義
+└── textures/entity/boss/
+    └── floor1_boss.png
+```
+
+**フェーズ × アニメーション対応表:**
+
+| フェーズ | アニメーション名 | 内容 |
+|----------|----------------|------|
+| Phase 1  | `animation.boss.idle_phase1`  | 通常待機・歩行 |
+| Phase 2  | `animation.boss.idle_phase2`  | 速度上昇後の待機 |
+| Phase 3  | `animation.boss.idle_phase3`  | スマッシュ構え |
+| Phase 4  | `animation.boss.rage`         | 全力モード待機 |
+| 攻撃     | `animation.boss.attack_slash` | 斬撃（Phase 1〜2）|
+| 攻撃     | `animation.boss.attack_smash` | スマッシュ（Phase 3〜4）|
+
 ### 基底クラス
+
+`Monster` の代わりに GeckoLib の `GeoEntity` を継承し、アニメーションコントローラーを登録する。
 
 ```java
 // SaoFloorBoss.java
-public abstract class SaoFloorBoss extends Monster {
+public abstract class SaoFloorBoss extends Monster implements GeoEntity {
 
+    private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
     protected int phase = 1;
     protected final int floorId;
     protected ServerBossEvent bossBar;
@@ -283,18 +358,42 @@ public abstract class SaoFloorBoss extends Monster {
         this.floorId = floorId;
     }
 
+    // --- GeckoLib 必須実装 ---
+
+    @Override
+    public void registerControllers(AnimatableManager.ControllerRegistrar registrar) {
+        registrar.add(new AnimationController<>(this, "base", 5, this::baseAnimController));
+        registrar.add(new AnimationController<>(this, "attack", 0, this::attackAnimController));
+    }
+
+    @Override
+    public AnimatableInstanceCache getAnimatableInstanceCache() { return cache; }
+
+    protected PlayState baseAnimController(AnimationState<SaoFloorBoss> state) {
+        return switch (phase) {
+            case 1 -> state.setAndContinue(RawAnimation.begin().thenLoop("animation.boss.idle_phase1"));
+            case 2 -> state.setAndContinue(RawAnimation.begin().thenLoop("animation.boss.idle_phase2"));
+            case 3 -> state.setAndContinue(RawAnimation.begin().thenLoop("animation.boss.idle_phase3"));
+            default -> state.setAndContinue(RawAnimation.begin().thenLoop("animation.boss.rage"));
+        };
+    }
+
+    // サブクラスで攻撃アニメーションを定義する
+    protected abstract PlayState attackAnimController(AnimationState<SaoFloorBoss> state);
+
+    // --- 既存ロジック ---
+
     @Override
     public void startSeenByPlayer(ServerPlayer player) {
         super.startSeenByPlayer(player);
-        // BossBar 表示
         bossBar.addPlayer(player);
     }
 
     @Override
     public void tick() {
         super.tick();
-        updatePhase();        // HPに応じてフェーズ移行
-        updateBossBar();      // BossBar 更新
+        updatePhase();
+        updateBossBar();
     }
 
     protected void updatePhase() {
@@ -304,7 +403,7 @@ public abstract class SaoFloorBoss extends Monster {
                      : (ratio > 0.25f) ? 3 : 4;
         if (newPhase != phase) {
             phase = newPhase;
-            onPhaseChange(phase); // サブクラスで攻撃パターン変更
+            onPhaseChange(phase);
         }
     }
 
@@ -343,22 +442,24 @@ public abstract class SaoFloorBoss extends Monster {
 ```text
 [Phase 1]
   ✅ FloorData (SavedData) 実装
-  ✅ Floor 1〜3 構造体NBT作成
-  ✅ SaoFloorBoss 基底クラス
-  ✅ Floor 1 ボス実装 (イルファング)
+  ✅ Floor 1〜3 構造体NBT作成（Structurize でスキャン → .nbt 変換）
+  ✅ GeckoLib 依存追加 + build.gradle 設定
+  ✅ SaoFloorBoss 基底クラス（GeckoLib GeoEntity 継承）
+  ✅ Floor 1 ボス実装 (イルファング) + GeckoLib アニメーション JSON
   ✅ FloorGateBlock 実装
   ✅ クリアパケット + 簡易演出
 
 [Phase 2]
-  ☐ Floor 4〜5 構造体・ボス
+  ☐ Floor 4〜5 構造体（Structurize スキャン済み NBT を使用）・ボス
   ☐ jigsaw モジュール生成
   ☐ エネミー種ごとのカスタムAI
   ☐ フロアマップUI
+  ☐ GeckoLib アニメーション拡充（Phase 2 ボス分）
 
 [Phase 3]
-  ☐ Floor 6〜10
+  ☐ Floor 6〜10（Structurize で構造体を量産）
   ☐ Floor 75 中間ボス
-  ☐ Floor 100 最終ボス
+  ☐ Floor 100 最終ボス「ヒースクリフ」
 ```
 
 ---
