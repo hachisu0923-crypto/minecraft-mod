@@ -58,13 +58,13 @@ dependencies {
     implementation fg.deobf("software.bernie.geckolib:geckolib-forge-1.20.1:${geckolib_version}")
 
     // YUNG's API — Enhanced Jigsaw Manager でダンジョン生成を強化 (Phase 2〜)
-    implementation fg.deobf("com.yungnickyoung.minecraft.yungsapi:YungsApi-1.20-Forge:${yungsapi_version}")
+    // implementation fg.deobf("com.yungnickyoung.minecraft.yungsapi:YungsApi-1.20-Forge:${yungsapi_version}")
 
     // TerraBlender — フロアディメンションへのカスタムバイオーム注入 (Phase 3〜)
-    implementation fg.deobf("curse.maven:terrablender-563928:${terrablender_file_id}")
+    // implementation fg.deobf("curse.maven:terrablender-563928:${terrablender_file_id}")
 
     // Structure Gel API — 構造体境界定義・Gel ブロックによる自動整地 (Phase 2〜)
-    implementation fg.deobf("com.legacy:structure-gel:${structure_gel_version}:forge")
+    // implementation fg.deobf("com.legacy:structure-gel:${structure_gel_version}:forge")
 
     // Structurize — 開発時のインゲーム構造体スキャンツール (実行時のみ)
     // File ID は CurseForge のファイルページから取得して差し替えること
