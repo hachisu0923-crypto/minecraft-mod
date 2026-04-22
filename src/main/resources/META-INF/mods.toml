@@ -1,0 +1,30 @@
+modLoader = "javafml"
+loaderVersion = "[47,)"
+license = "MIT"
+
+[[dependencies.saomod]]
+    modId = "forge"
+    mandatory = true
+    versionRange = "[47,)"
+    ordering = "NONE"
+    side = "BOTH"
+
+[[dependencies.saomod]]
+    modId = "minecraft"
+    mandatory = true
+    versionRange = "[1.20.1,1.21)"
+    ordering = "NONE"
+    side = "BOTH"
+
+[[dependencies.saomod]]
+    modId = "geckolib"
+    mandatory = true
+    versionRange = "[4.4,)"
+    ordering = "NONE"
+    side = "BOTH"
+
+[[mods]]
+    modId = "saomod"
+    version = "${file.jarVersion}"
+    displayName = "SAO Mod"
+    description = "Sword Art Online — Aincrad floor system for Minecraft Forge 1.20.1"

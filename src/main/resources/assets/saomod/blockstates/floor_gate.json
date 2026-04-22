@@ -1,0 +1,9 @@
+{
+    "variants": {
+        "required_floor=1": { "model": "saomod:block/floor_gate" },
+        "required_floor=2": { "model": "saomod:block/floor_gate" },
+        "required_floor=3": { "model": "saomod:block/floor_gate" },
+        "required_floor=4": { "model": "saomod:block/floor_gate" },
+        "required_floor=5": { "model": "saomod:block/floor_gate" }
+    }
+}
