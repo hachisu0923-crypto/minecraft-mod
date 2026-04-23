@@ -13,14 +13,13 @@ import net.minecraft.world.level.Level;
 import software.bernie.geckolib.animation.AnimationState;
 import software.bernie.geckolib.animation.PlayState;
 import software.bernie.geckolib.animation.RawAnimation;
-import software.bernie.geckolib.core.animation.Animation;
 
 public class IllfangBoss extends SaoFloorBoss {
 
     private static final RawAnimation SLASH = RawAnimation.begin()
-            .then("animation.boss.attack_slash", Animation.LoopType.PLAY_ONCE);
+            .thenPlay("animation.boss.attack_slash");
     private static final RawAnimation SMASH = RawAnimation.begin()
-            .then("animation.boss.attack_smash", Animation.LoopType.PLAY_ONCE);
+            .thenPlay("animation.boss.attack_smash");
 
     public IllfangBoss(EntityType<? extends IllfangBoss> type, Level level) {
         super(type, level, 1);

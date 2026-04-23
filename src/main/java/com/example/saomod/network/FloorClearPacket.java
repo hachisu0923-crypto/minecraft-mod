@@ -32,11 +32,14 @@ public class FloorClearPacket {
         ctx.get().enqueueWork(() -> {
             Minecraft mc = Minecraft.getInstance();
             mc.gui.setTitle(
-                    Component.literal("Floor " + pkt.floorId + " — Cleared!")
-                            .withStyle(ChatFormatting.GOLD),
+                    Component.literal("Floor " + pkt.floorId + " - Cleared!")
+                            .withStyle(ChatFormatting.GOLD)
+            );
+            mc.gui.setSubtitle(
                     Component.literal(pkt.bossName)
                             .withStyle(ChatFormatting.YELLOW)
             );
+            mc.gui.resetTitleTimes();
             if (mc.player != null) {
                 mc.player.playSound(SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 1.0f);
             }
